@@ -18,12 +18,11 @@ import de.undercouch.gradle.tasks.download.Download
 import org.apache.tools.ant.taskdefs.condition.Os
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.io.ByteArrayOutputStream
 
 plugins {
-    id("org.jetbrains.intellij.platform") version "2.7.0"
-    id("org.jetbrains.kotlin.jvm").version("2.1.0")
-    id("de.undercouch.download").version("5.3.0")
+    id("org.jetbrains.intellij.platform") version "2.13.1"
+    id("org.jetbrains.kotlin.jvm").version("2.3.0")
+    id("de.undercouch.download").version("5.7.0")
 }
 
 data class BuildData(
@@ -43,10 +42,10 @@ data class BuildData(
 
 val buildDataList = listOf(
     BuildData(
-        ideaSDKShortVersion = "2025.3",
-        ideaSDKVersion = "253.28086.51",
-        sinceBuild = "253",
-        untilBuild = "253.*",
+        ideaSDKShortVersion = "2026.1",
+        ideaSDKVersion = "261.22158.277",
+        sinceBuild = "261",
+        untilBuild = "261.*",
         bunch = "212",
         targetCompatibilityLevel = JavaVersion.VERSION_21,
         jvmTarget = "21"
@@ -68,29 +67,23 @@ val isCI = System.getenv("CI") != null
 // CI
 if (isCI) {
     version = System.getenv("CI_BUILD_VERSION")
-    exec {
-        executable = "git"
-        args("config", "--global", "user.email", "love.tangzx@qq.com")
-    }
-    exec {
-        executable = "git"
-        args("config", "--global", "user.name", "tangzx")
-    }
+    providers.exec {
+        commandLine("git", "config", "--global", "user.email", "love.tangzx@qq.com")
+    }.result.get()
+    providers.exec {
+        commandLine("git", "config", "--global", "user.name", "tangzx")
+    }.result.get()
 }
 
 version = "${version}-IDEA${buildVersion}"
 
 fun getRev(): String {
-    val os = ByteArrayOutputStream()
-    exec {
-        executable = "git"
-        args("rev-parse", "HEAD")
-        standardOutput = os
-    }
-    return os.toString().substring(0, 7)
+    return providers.exec {
+        commandLine("git", "rev-parse", "HEAD")
+    }.standardOutput.asText.get().trim().substring(0, 7)
 }
 
-task("downloadEmmyDebugger", type = Download::class) {
+tasks.register<Download>("downloadEmmyDebugger") {
     src(arrayOf(
         "https://github.com/EmmyLua/EmmyLuaDebugger/releases/download/${emmyDebuggerVersion}/darwin-arm64.zip",
         "https://github.com/EmmyLua/EmmyLuaDebugger/releases/download/${emmyDebuggerVersion}/darwin-x64.zip",
@@ -102,7 +95,7 @@ task("downloadEmmyDebugger", type = Download::class) {
     dest("temp")
 }
 
-task("unzipEmmyDebugger", type = Copy::class) {
+tasks.register<Copy>("unzipEmmyDebugger") {
     dependsOn("downloadEmmyDebugger")
     from(zipTree("temp/win32-x86.zip")) {
         into("windows/x86")
@@ -119,10 +112,10 @@ task("unzipEmmyDebugger", type = Copy::class) {
     from(zipTree("temp/linux-x64.zip")) {
         into("linux")
     }
-    destinationDir = file("temp")
+    into(file("temp"))
 }
 
-task("installEmmyDebugger", type = Copy::class) {
+tasks.register<Copy>("installEmmyDebugger") {
     dependsOn("unzipEmmyDebugger")
     from("temp/windows/x64/") {
         include("emmy_core.dll")
@@ -144,7 +137,7 @@ task("installEmmyDebugger", type = Copy::class) {
         include("emmy_core.dylib")
         into("debugger/emmy/mac/arm64")
     }
-    destinationDir = file("src/main/resources")
+    into(file("src/main/resources"))
 }
 
 project(":") {
@@ -164,7 +157,7 @@ project(":") {
         implementation("org.eclipse.mylyn.github:org.eclipse.egit.github.core:2.1.5")
         implementation("com.jgoodies:forms:1.2.1")
         intellijPlatform {
-            intellijIdeaUltimate(buildVersionData.ideaSDKVersion)
+            intellijIdea(buildVersionData.ideaSDKShortVersion)
             bundledModule("intellij.spellchecker")
         }
     }
@@ -187,29 +180,25 @@ project(":") {
         sandboxContainer.set(layout.buildDirectory.dir("${buildVersionData.ideaSDKShortVersion}/idea-sandbox"))
     }
 
-    task("bunch") {
+    tasks.register("bunch") {
         doLast {
             val rev = getRev()
             // reset
-            exec {
-                executable = "git"
-                args("reset", "HEAD", "--hard")
-            }
+            providers.exec {
+                commandLine("git", "reset", "HEAD", "--hard")
+            }.result.get()
             // clean untracked files
-            exec {
-                executable = "git"
-                args("clean", "-d", "-f")
-            }
+            providers.exec {
+                commandLine("git", "clean", "-d", "-f")
+            }.result.get()
             // switch
-            exec {
-                executable = if (isWin) "bunch/bin/bunch.bat" else "bunch/bin/bunch"
-                args("switch", ".", buildVersionData.bunch)
-            }
+            providers.exec {
+                commandLine(if (isWin) "bunch/bin/bunch.bat" else "bunch/bin/bunch", "switch", ".", buildVersionData.bunch)
+            }.result.get()
             // reset to HEAD
-            exec {
-                executable = "git"
-                args("reset", rev)
-            }
+            providers.exec {
+                commandLine("git", "reset", rev)
+            }.result.get()
         }
     }
 
